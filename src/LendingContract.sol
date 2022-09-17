@@ -20,9 +20,26 @@ error LendingContract__LoanNotDueYet();
 
 error LendingContract_LoanHasntBeenAccepted();
 
+/// @title A Time Based NFT Lending Contract
+/// @author Egbolcuhe Francis
+/// @notice A contract that allows for users to use their NFTS as collateral
 contract LendingContract is ReentrancyGuard {
+    /// @notice Keeps track of the total number of loans so far
+    /// @return loanIdCounter returns the current total loans
     uint256 public loanIdCounter;
 
+    /// @notice Contains all the information on a specific loan
+    /// @return loanId The loan Id for the specific loan
+    /// @return nftAddress the nft contract address being used as collateral
+    /// @return tokenId the token Id for the nft contract address
+    /// @return maturityDate the time period in seconds that the loan is valid
+    /// @return maturityDateCounter the counter that counts down the maturity date as loan gets accepted
+    /// @return principal the amount being borrowed by the nft owner
+    /// @return interest fixed interest to be paid back to lender
+    /// @return accepted keeps track of whether loan has been accepted by a lender
+    /// @return lender the address of the lender
+    /// @return borrower the address of teh borrower
+    /// @return paid if the loan has been paid or not
     struct LoanDetails {
         uint256 loanId;
         address nftAddress;
@@ -37,32 +54,65 @@ contract LendingContract is ReentrancyGuard {
         bool paid;
     }
 
+    //keeps track of the loanId to the loan details
     mapping(uint256 => LoanDetails) public loans;
+
+    // keeps track of whether a loanId exists
     mapping(uint256 => bool) public loanExistence;
 
+    /// @notice Emitted when a loan is proposed by a borrower
+    /// @param lender the address of the lender
+    /// @param borrower the address of the borrower
+    /// @param loanId the loan id
     event LoanProposed(
         address indexed lender,
         address indexed borrower,
         uint256 indexed loanId
     );
+
+    /// @notice Emitted when a loan is acccepted by a lender
+    /// @param lender the address of the lender
+    /// @param borrower the address of the borrower
+    /// @param loanId the loan id
     event LoanAccepted(
         address indexed lender,
         address indexed borrower,
         uint256 indexed loanId
     );
+
+    /// @notice Emitted when a loan is modified by the borrower
+    /// @param loanId the loan id
+    /// @param maturityDate the time period that the loan is valid
+    /// @param principal the amount of money the borrower is requesting
     event LoanModified(
         uint256 indexed loanId,
         uint256 indexed maturityDate,
         uint256 indexed principal,
         uint256 interest
     );
+
+    /// @notice Emitted when a loan is repaid by the borrower
+    /// @param loanId the loan id
+    /// @param amountPaid the total amount paid by the borrower including interest
     event LoanRepaid(uint256 indexed loanId, uint256 indexed amountPaid);
+
+    /// @notice Emitted when a lender claims the nft of the borrower on default
+    /// @param loanId the loan id
+    /// @param nftAddress the contract address of the nft the lender claimed
+    /// @param tokenId the token id of the nft claimed by the lender on default
     event LoanClaimed(
         uint256 indexed loanId,
         address indexed nftAddress,
         uint256 indexed tokenId
     );
 
+    /// @notice allows the borrower to propose a loan using their nft as collateral
+    /// @dev The contract takes the nft and holds it until the loan is repaid
+    /// @param nftAddress the contract addres of the nft being used as collateral
+    /// @param tokenId the token id of the nft contract
+    /// @param maturityDate the time allowed fo repayment
+    /// @param principal the amount requested by borrower from lender
+    /// @param interest the interest the borrower is willing to pay back the lender
     function proposeLoan(
         address nftAddress,
         uint256 tokenId,
@@ -96,6 +146,8 @@ contract LendingContract is ReentrancyGuard {
         emit LoanProposed(address(0), msg.sender, loanIdCounter);
     }
 
+    /// @notice A lender can choose a loan by its id and accept the terms
+    /// @param loanId the loan id for the loan
     function acceptLoan(uint256 loanId) public payable nonReentrant {
         // also check if loan exists
         _checkLoanExistence(loanId);
@@ -127,7 +179,12 @@ contract LendingContract is ReentrancyGuard {
         emit LoanAccepted(msg.sender, loanDetails.borrower, loanId);
     }
 
-    // change loan details
+    /// @notice allows the borrower to modify the details of the loan before its accepted
+    /// @dev The contract takes the nft and holds it until the loan is repaid
+    /// @param loanId the loan id for the loan to be modified
+    /// @param maturityDate the time allowed fo repayment
+    /// @param principal the amount requested by borrower from lender
+    /// @param interest the interest the borrower is willing to pay back the lender
     function modifyLoanDetails(
         uint256 loanId,
         uint256 maturityDate,
@@ -156,9 +213,8 @@ contract LendingContract is ReentrancyGuard {
         emit LoanModified(loanId, maturityDate, principal, interest);
     }
 
-    // repay loan
-    // anyone can repay the loan on behalf of someone else
-
+    /// @notice allows the borrow to repay loan with the loan id
+    /// @param loanId the loan id for the loan
     function repayLoan(uint256 loanId) public payable nonReentrant {
         // check if loan exists
         _checkLoanExistence(loanId);
@@ -198,8 +254,8 @@ contract LendingContract is ReentrancyGuard {
         emit LoanRepaid(loanId, totalAmount);
     }
 
-    // claimNFT on default
-
+    /// @notice A lender can claim the borrowers nft on default
+    /// @param loanId the loan id for the loan
     function claimNFTOnDefault(uint256 loanId) public nonReentrant {
         LoanDetails memory loanDetails = loans[loanId];
         // check if loan has been repaid
@@ -229,6 +285,15 @@ contract LendingContract is ReentrancyGuard {
 
     // INTERNAL FUNCTIONS
 
+    /// @notice stores the loan with all its details
+    /// @dev updates the loanId mapping with the loan details
+    /// @param _loanId the loan id for the loan
+    /// @param _nftAddress the contract addres of the nft being used as collateral
+    /// @param _tokenId the token id of the nft contract
+    /// @param _maturityDate the time allowed fo repayment
+    /// @param _principal the amount requested by borrower from lender
+    /// @param _interest the interest the borrower is willing to pay back the lender
+    /// @param _msgSender the interest the borrower is willing to pay back the lender
     function _initializeLoan(
         uint256 _loanId,
         address _nftAddress,
@@ -236,7 +301,7 @@ contract LendingContract is ReentrancyGuard {
         uint256 _maturityDate,
         uint256 _principal,
         uint256 _interest,
-        address msgSender
+        address _msgSender
     ) internal {
         loans[_loanId] = LoanDetails({
             loanId: _loanId,
@@ -248,11 +313,16 @@ contract LendingContract is ReentrancyGuard {
             interest: _interest,
             accepted: false,
             lender: address(0),
-            borrower: msgSender,
+            borrower: _msgSender,
             paid: false
         });
     }
 
+    /// @notice checks for invalid loan details parameters
+    /// @dev makes sure the nft address isnt zero and the maturity date and principal isnt zero
+    /// @param maturityDate the time allowed fo repayment
+    /// @param principal the amount requested by borrower from lender
+    /// @param nftAddress the interest the borrower is willing to pay back the lender
     function _checkLoanDetails(
         uint256 maturityDate,
         uint256 principal,
@@ -268,11 +338,11 @@ contract LendingContract is ReentrancyGuard {
         }
     }
 
+    /// @notice checks if the loan exits
+    /// @param loanId the loan id for the loan
     function _checkLoanExistence(uint256 loanId) internal view {
         if (!loanExistence[loanId]) {
             revert LendingContract__LoanDoesNotExist();
         }
     }
-
-    // GETTER FUNCTIONS - TO BE ADDED
 }
